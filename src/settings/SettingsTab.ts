@@ -13,7 +13,6 @@ export class SettingsTab extends PluginSettingTab {
   display(): void {
     const { containerEl } = this;
     containerEl.empty();
-    new Setting(containerEl).setName("Mendeley Integration").setHeading();
 
     const settings = this.plugin.data.settings;
 
