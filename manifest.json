@@ -5,6 +5,6 @@
   "minAppVersion": "1.4.0",
   "description": "Sync your Mendeley library with Obsidian notes: metadata, citekeys, and (soon) annotations and Pandoc-style citations.",
   "author": "Elisa Urrejola",
-  "authorUrl": "",
+  "authorUrl": "https://github.com/elisaurrejola16",
   "isDesktopOnly": true
 }
