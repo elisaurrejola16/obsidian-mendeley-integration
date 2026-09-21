@@ -40,11 +40,17 @@ A desktop-only Obsidian plugin that syncs your [Mendeley](https://www.mendeley.c
 
 ## 3. Install the plugin
 
-This plugin isn't in Obsidian's official Community Plugins directory yet (that requires a review process by the Obsidian team). There are two ways to install it in the meantime:
+### Option A: Community Plugins (recommended)
 
-### Option A: BRAT (recommended, no manual file copying)
+This plugin is listed in Obsidian's official Community Plugins directory.
 
-[BRAT](https://github.com/TfTHacker/obsidian42-brat) ("Beta Reviewers Auto-update Tool") is itself an official community plugin that can install and auto-update any Obsidian plugin hosted on GitHub, even ones not yet in the official directory.
+1. In Obsidian: **Settings → Community plugins** → turn off "Restricted mode" if it's on → **Browse** → search for **"Mendeley Integration"** → install it → enable it.
+
+> Just got approved? Obsidian can take up to 24 hours to propagate a newly approved plugin to the in-app search. If it doesn't show up yet, use Option B below in the meantime, or just try again a bit later.
+
+### Option B: BRAT (no waiting, no manual file copying)
+
+[BRAT](https://github.com/TfTHacker/obsidian42-brat) ("Beta Reviewers Auto-update Tool") is itself an official community plugin that can install and auto-update any Obsidian plugin hosted on GitHub, including this one, ahead of the in-app directory catching up, or if you want the latest commit before it's tagged as a release.
 
 1. In Obsidian: **Settings → Community plugins** → turn off "Restricted mode" if it's on → **Browse** → search for **"BRAT"** → install it → enable it.
 2. Open BRAT's settings (or run the command **"BRAT: Add a beta plugin for testing"**).
@@ -52,12 +58,14 @@ This plugin isn't in Obsidian's official Community Plugins directory yet (that r
 4. BRAT downloads the latest release's `main.js`/`manifest.json` and enables the plugin automatically.
 5. To get updates later, use BRAT's **"Check for updates"** command — no need to redo any of this.
 
-### Option B: Manual install
+### Option C: Manual install
 
 1. Download `main.js` and `manifest.json` from the [latest release](https://github.com/elisaurrejola16/obsidian-mendeley-integration/releases/latest), or build them yourself (see the "Development" section below).
 2. In your vault, create the folder `.obsidian/plugins/mendeley-integration/`.
 3. Copy those 2 files into that folder.
 4. In Obsidian: **Settings → Community plugins** → turn off "Restricted mode" if it's on → find "Mendeley Integration" in the installed plugins list → enable it.
+
+**Whichever option you used above**, every user still needs to complete step 2 (create your own Mendeley application) and step 4 (configure and connect) below — that part is the same regardless of install method, since each person needs their own Mendeley Client ID/Secret (see the security note in section 6 for why this can't be shared or bundled into the plugin).
 
 ## 4. Configure and connect
 
