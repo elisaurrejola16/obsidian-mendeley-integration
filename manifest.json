@@ -1,0 +1,10 @@
+{
+  "id": "mendeley-integration",
+  "name": "Mendeley Integration",
+  "version": "0.1.0",
+  "minAppVersion": "1.4.0",
+  "description": "Sync your Mendeley library with Obsidian notes: metadata, citekeys, and (soon) annotations and Pandoc-style citations.",
+  "author": "Elisa Urrejola",
+  "authorUrl": "",
+  "isDesktopOnly": true
+}
