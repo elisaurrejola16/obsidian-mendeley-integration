@@ -1,5 +1,6 @@
 import { App, PluginSettingTab, Setting, Notice } from "obsidian";
 import type MendeleyPlugin from "../main";
+import { getErrorMessage } from "../utils/errors";
 
 export class SettingsTab extends PluginSettingTab {
   plugin: MendeleyPlugin;
@@ -12,7 +13,7 @@ export class SettingsTab extends PluginSettingTab {
   display(): void {
     const { containerEl } = this;
     containerEl.empty();
-    containerEl.createEl("h2", { text: "Mendeley Integration" });
+    new Setting(containerEl).setName("Mendeley Integration").setHeading();
 
     const settings = this.plugin.data.settings;
 
@@ -79,7 +80,7 @@ export class SettingsTab extends PluginSettingTab {
           await this.plugin.saveSettings(settings);
         });
         text.inputEl.rows = 10;
-        text.inputEl.style.width = "100%";
+        text.inputEl.setCssStyles({ width: "100%" });
       });
 
     new Setting(containerEl)
@@ -102,7 +103,7 @@ export class SettingsTab extends PluginSettingTab {
               try {
                 this.plugin.authManager.beginAuthorization();
               } catch (err) {
-                new Notice((err as Error).message, 6000);
+                new Notice(getErrorMessage(err), 6000);
               }
             });
         }

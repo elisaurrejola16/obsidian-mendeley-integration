@@ -22,6 +22,6 @@ export function serializeNoteContent(
   frontmatter: Record<string, unknown>,
   body: string
 ): string {
-  const yaml = stringifyYaml(frontmatter).trimEnd();
+  const yaml = (stringifyYaml(frontmatter) as string).trimEnd();
   return `---\n${yaml}\n---\n\n${body.trimStart()}`;
 }

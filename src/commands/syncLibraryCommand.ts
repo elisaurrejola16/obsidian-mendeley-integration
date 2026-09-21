@@ -3,6 +3,7 @@ import { MendeleyClient } from "../api/MendeleyClient";
 import { syncLibrary } from "../sync/SyncService";
 import type { MendeleySettings } from "../settings/types";
 import type { SyncStateData } from "../sync/SyncState";
+import { getErrorMessage } from "../utils/errors";
 
 export interface SyncCommandDeps {
   app: App;
@@ -56,7 +57,7 @@ export async function runSyncCommand(
     }
   } catch (err) {
     notice.hide();
-    new Notice(`Error syncing with Mendeley: ${(err as Error).message}`, 8000);
+    new Notice(`Error syncing with Mendeley: ${getErrorMessage(err)}`, 8000);
     console.error(err);
   }
 }

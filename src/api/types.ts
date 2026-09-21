@@ -47,7 +47,8 @@ export interface MendeleyAnnotationPosition {
 export interface MendeleyAnnotation {
   id: string;
   document_id: string;
-  type: "highlight" | "note" | string;
+  /** Known values are "highlight" and "note"; kept as a plain string since Mendeley may add others. */
+  type: string;
   page?: number;
   color?: { r: number; g: number; b: number };
   positions?: MendeleyAnnotationPosition[];

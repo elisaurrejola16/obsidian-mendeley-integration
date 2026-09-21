@@ -1,6 +1,6 @@
 {
   "name": "obsidian-mendeley-integration",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "Mendeley integration for Obsidian (reading notes, citekeys, Pandoc citations).",
   "main": "main.js",
   "scripts": {
@@ -14,7 +14,6 @@
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^20.11.0",
-    "builtin-modules": "^3.3.0",
     "esbuild": "0.20.0",
     "obsidian": "latest",
     "tslib": "2.6.2",

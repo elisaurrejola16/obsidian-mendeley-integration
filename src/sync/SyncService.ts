@@ -20,6 +20,7 @@ import {
   sanitizePathSegment,
 } from "./FolderHierarchy";
 import type { SyncStateData } from "./SyncState";
+import { getErrorMessage } from "../utils/errors";
 
 export interface SyncResult {
   created: number;
@@ -93,7 +94,7 @@ export async function syncLibrary(deps: SyncDependencies): Promise<SyncResult> {
           newestModified = doc.last_modified;
         }
       } catch (err) {
-        result.errors.push(`${doc.title ?? doc.id}: ${(err as Error).message}`);
+        result.errors.push(`${doc.title ?? doc.id}: ${getErrorMessage(err)}`);
       }
     }
   }
