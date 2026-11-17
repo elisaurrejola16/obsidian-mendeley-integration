@@ -5,6 +5,8 @@ import { TokenStore } from "../auth/TokenStore";
 import { withRetry } from "../utils/retry";
 
 const API_BASE = "https://api.mendeley.com";
+const USER_AGENT =
+  "ObsidianMendeleyIntegration (+https://github.com/elisaurrejola16/obsidian-mendeley-integration)";
 
 export class MendeleyApiError extends Error {
   constructor(public status: number, message: string) {
@@ -246,7 +248,7 @@ function getWithoutFollowing(url: string, token: string): Promise<RawResponse> {
         method: "GET",
         headers: {
           Authorization: `Bearer ${token}`,
-          "User-Agent": navigator.userAgent,
+          "User-Agent": USER_AGENT,
           Accept: "*/*",
         },
       },
