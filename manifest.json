@@ -1,7 +1,7 @@
 {
   "id": "mendeley-integration",
   "name": "Mendeley Integration",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "minAppVersion": "1.6.6",
   "description": "Sync your Mendeley library into reading notes with citekeys, folders and on-demand PDFs. Citations and annotations coming soon.",
   "author": "Elisa Urrejola",
