@@ -69,6 +69,30 @@ export class SettingsTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
+      .setName("File name for new notes")
+      .setDesc(
+        "Variables: {{citekey}}, {{title}}, {{year}}, {{author}}. Only applies to notes created from now on: existing notes are never renamed, so you can rename or move them freely."
+      )
+      .addText((text) =>
+        text.setValue(settings.fileNameTemplate).onChange(async (value) => {
+          settings.fileNameTemplate = value.trim() || "{{citekey}}";
+          await this.plugin.saveSettings(settings);
+        })
+      );
+
+    new Setting(containerEl)
+      .setName("PDF folder")
+      .setDesc(
+        "Vault folder where PDFs are saved when you download them from a note (they are only downloaded on demand)."
+      )
+      .addText((text) =>
+        text.setValue(settings.pdfFolder).onChange(async (value) => {
+          settings.pdfFolder = value.trim() || "Attachments/Mendeley";
+          await this.plugin.saveSettings(settings);
+        })
+      );
+
+    new Setting(containerEl)
       .setName("Note template")
       .setDesc(
         "Available variables: {{title}}, {{authors}}, {{year}}, {{journal}}, {{doi}}, {{abstract}}, {{citekey}}. This content is regenerated on every sync inside the managed block; write your own notes outside it (under '## My notes')."

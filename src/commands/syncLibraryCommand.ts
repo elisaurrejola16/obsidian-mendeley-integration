@@ -38,6 +38,7 @@ export async function runSyncCommand(
       app: deps.app,
       client: deps.client,
       targetFolder: settings.targetFolder,
+      fileNameTemplate: settings.fileNameTemplate,
       noteTemplate: settings.noteTemplate,
       syncState: options.forceFullSync
         ? { ...syncState, lastModifiedSince: null }

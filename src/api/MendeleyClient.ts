@@ -1,4 +1,5 @@
-import { requestUrl, RequestUrlParam } from "obsidian";
+import { request as httpsRequest } from "https";
+import { requestUrl, RequestUrlParam, RequestUrlResponse } from "obsidian";
 import { OAuthManager } from "../auth/OAuthManager";
 import { TokenStore } from "../auth/TokenStore";
 import { withRetry } from "../utils/retry";
@@ -17,6 +18,9 @@ export interface MendeleyResponse<T> {
   nextMarkerUrl: string | null;
   totalCount: number | null;
 }
+
+const isRetryable = (err: unknown): boolean =>
+  err instanceof MendeleyApiError && (err.status === 429 || err.status >= 500);
 
 /**
  * Minimal HTTP client on top of requestUrl (avoids fetch to sidestep CORS
@@ -39,12 +43,72 @@ export class MendeleyClient {
   requestByUrl<T>(url: string): Promise<MendeleyResponse<T>> {
     return withRetry(
       () => this.doRequest<T>(url, true),
-      (err) =>
-        err instanceof MendeleyApiError &&
-        (err.status === 429 || err.status >= 500),
+      isRetryable,
       () => null,
       { maxRetries: 5, baseDelayMs: 500 }
     );
+  }
+
+  /**
+   * Downloads a Mendeley file. The API answers with a redirect (303) to a
+   * short-lived signed storage URL (S3). requestUrl always follows redirects
+   * and would forward the Mendeley bearer token to S3, which rejects a second
+   * credential ("Only one auth mechanism allowed", HTTP 400). So the first hop
+   * uses Node's https (this plugin is desktop-only), which does not follow
+   * redirects, and the signed URL is then fetched WITHOUT the token.
+   */
+  downloadFile(fileId: string): Promise<ArrayBuffer> {
+    const url = buildUrl(`/files/${fileId}`);
+    return withRetry(
+      async () => {
+        await this.ensureFreshToken();
+        let raw = await getWithoutFollowing(url, this.accessToken());
+        if (raw.status === 401) {
+          await this.authManager.refreshAccessToken();
+          raw = await getWithoutFollowing(url, this.accessToken());
+        }
+        if (raw.status === 401) {
+          throw new MendeleyApiError(
+            401,
+            "Mendeley rejected the session. Reconnect your account from the plugin settings."
+          );
+        }
+        if (raw.status >= 300 && raw.status < 400 && raw.location) {
+          const signed = await requestUrl({ url: raw.location, method: "GET", throw: false });
+          if (signed.status >= 400) {
+            throw new MendeleyApiError(
+              signed.status,
+              `Could not download the file from Mendeley's storage (HTTP ${signed.status})${bodySnippet(signed)}.`
+            );
+          }
+          return signed.arrayBuffer;
+        }
+        if (raw.status >= 400) {
+          throw new MendeleyApiError(
+            raw.status,
+            `Mendeley responded with an error (HTTP ${raw.status})${textSnippet(raw.body.toString("utf8"))}.`
+          );
+        }
+        return raw.body.buffer.slice(
+          raw.body.byteOffset,
+          raw.body.byteOffset + raw.body.byteLength
+        ) as ArrayBuffer;
+      },
+      isRetryable,
+      () => null,
+      { maxRetries: 3, baseDelayMs: 500 }
+    );
+  }
+
+  private accessToken(): string {
+    const tokens = this.tokenStore.get();
+    if (!tokens) {
+      throw new MendeleyApiError(
+        401,
+        "There is no active Mendeley session. Connect from the plugin settings."
+      );
+    }
+    return tokens.accessToken;
   }
 
   private async ensureFreshToken(): Promise<void> {
@@ -53,10 +117,10 @@ export class MendeleyClient {
     }
   }
 
-  private async doRequest<T>(
+  private async authorizedGet(
     url: string,
     allowAuthRetry: boolean
-  ): Promise<MendeleyResponse<T>> {
+  ): Promise<RequestUrlResponse> {
     await this.ensureFreshToken();
     const tokens = this.tokenStore.get();
     if (!tokens) {
@@ -76,7 +140,7 @@ export class MendeleyClient {
 
     if (response.status === 401 && allowAuthRetry) {
       await this.authManager.refreshAccessToken();
-      return this.doRequest<T>(url, false);
+      return this.authorizedGet(url, false);
     }
     if (response.status === 401) {
       throw new MendeleyApiError(
@@ -99,20 +163,37 @@ export class MendeleyClient {
     if (response.status >= 400) {
       throw new MendeleyApiError(
         response.status,
-        `Mendeley responded with an error (HTTP ${response.status}).`
+        `Mendeley responded with an error (HTTP ${response.status})${bodySnippet(response)}.`
       );
     }
+    return response;
+  }
 
-    const headers = response.headers ?? {};
-    const linkHeader = headers["link"] ?? headers["Link"];
-    const countHeader = headers["mendeley-count"] ?? headers["Mendeley-Count"];
+  private async doRequest<T>(
+    url: string,
+    allowAuthRetry: boolean
+  ): Promise<MendeleyResponse<T>> {
+    const response = await this.authorizedGet(url, allowAuthRetry);
+    const countHeader = getHeader(response.headers, "mendeley-count");
 
     return {
       data: response.json as T,
-      nextMarkerUrl: parseNextLink(linkHeader),
+      nextMarkerUrl: parseNextLink(getHeader(response.headers, "link")),
       totalCount: countHeader ? Number(countHeader) : null,
     };
   }
+}
+
+function getHeader(
+  headers: Record<string, string> | undefined,
+  name: string
+): string | undefined {
+  if (!headers) return undefined;
+  const wanted = name.toLowerCase();
+  for (const [key, value] of Object.entries(headers)) {
+    if (key.toLowerCase() === wanted) return value;
+  }
+  return undefined;
 }
 
 function buildUrl(
@@ -135,4 +216,54 @@ function parseNextLink(linkHeader?: string): string | null {
     if (match) return match[1];
   }
   return null;
+}
+
+function textSnippet(raw: string): string {
+  const text = raw.trim().replace(/\s+/g, " ").slice(0, 200);
+  return text ? `: ${text}` : "";
+}
+
+function bodySnippet(response: RequestUrlResponse): string {
+  try {
+    return textSnippet(response.text);
+  } catch {
+    return "";
+  }
+}
+
+interface RawResponse {
+  status: number;
+  location: string | undefined;
+  body: Buffer;
+}
+
+/** GET that never follows redirects, so the Authorization header only ever goes to api.mendeley.com. */
+function getWithoutFollowing(url: string, token: string): Promise<RawResponse> {
+  return new Promise((resolve, reject) => {
+    const req = httpsRequest(
+      url,
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "User-Agent": navigator.userAgent,
+          Accept: "*/*",
+        },
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (chunk: Buffer) => chunks.push(chunk));
+        res.on("end", () =>
+          resolve({
+            status: res.statusCode ?? 0,
+            location: res.headers.location,
+            body: Buffer.concat(chunks),
+          })
+        );
+        res.on("error", reject);
+      }
+    );
+    req.on("error", reject);
+    req.end();
+  });
 }

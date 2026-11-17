@@ -6,21 +6,20 @@ import {
   listFolderDocumentIds,
 } from "../api/endpoints";
 import type { MendeleyFolder } from "../api/types";
-import { generateCitekey } from "../citekey/CitekeyGenerator";
+import { resolveCitekey } from "../citekey/CitekeyGenerator";
 import {
   mapDocumentToFrontmatter,
   mergeFrontmatter,
   NoteFrontmatter,
 } from "../templates/frontmatterMapping";
+import { buildNoteFileName } from "../templates/fileName";
 import { parseNoteContent, serializeNoteContent } from "../utils/frontmatter";
 import { buildNoteBody } from "../templates/NoteTemplate";
-import {
-  buildFolderPaths,
-  pickPrimaryFolderPath,
-  sanitizePathSegment,
-} from "./FolderHierarchy";
+import { buildFolderPaths, pickPrimaryFolderPath } from "./FolderHierarchy";
 import type { SyncStateData } from "./SyncState";
 import { getErrorMessage } from "../utils/errors";
+import { ensureFolderExists } from "../utils/folders";
+import { buildPdfBlockBody, hasPdfBlock, upsertPdfBlock } from "../pdf/PdfBlock";
 
 export interface SyncResult {
   created: number;
@@ -32,17 +31,29 @@ export interface SyncDependencies {
   app: App;
   client: MendeleyClient;
   targetFolder: string;
+  fileNameTemplate: string;
   noteTemplate: string;
   syncState: SyncStateData;
   saveSyncState: (state: SyncStateData) => Promise<void>;
 }
 
+interface ExistingNote {
+  file: TFile;
+  citekey: string;
+}
+
+interface ExistingNotes {
+  byMendeleyId: Map<string, ExistingNote>;
+  citekeys: Set<string>;
+}
+
 /**
- * Incrementally syncs (modified_since) the Mendeley library into vault
- * notes, mirroring Mendeley's folder hierarchy as subfolders inside
- * targetFolder. Never deletes notes: if a document is removed in Mendeley,
- * the local note simply stops being updated (see README, known Phase 1
- * limitation).
+ * Incrementally syncs (modified_since) the Mendeley library into vault notes.
+ * Notes are identified by the mendeley_id in their frontmatter, never by file
+ * name or location, so the user can rename or move them freely. Existing notes
+ * are only updated in place (their managed block and managed frontmatter keys);
+ * only new notes get a folder (mirroring Mendeley's) and a generated file name.
+ * Never deletes notes.
  */
 export async function syncLibrary(deps: SyncDependencies): Promise<SyncResult> {
   const { app, client, targetFolder, noteTemplate, syncState } = deps;
@@ -50,8 +61,8 @@ export async function syncLibrary(deps: SyncDependencies): Promise<SyncResult> {
 
   await ensureFolderExists(app, targetFolder);
 
-  const existingNotesByCitekey = collectExistingNotes(app, targetFolder);
-  const existingCitekeys = new Set(existingNotesByCitekey.keys());
+  const existing = collectExistingNotes(app);
+  const existingCitekeys = existing.citekeys;
 
   const folders = await fetchAllFolders(client);
   const folderPathsById = buildFolderPaths(folders);
@@ -65,7 +76,8 @@ export async function syncLibrary(deps: SyncDependencies): Promise<SyncResult> {
   })) {
     for (const doc of page) {
       try {
-        const citekey = generateCitekey(doc, existingCitekeys);
+        const known = existing.byMendeleyId.get(doc.id);
+        const citekey = resolveCitekey(doc, known?.citekey, existingCitekeys);
         existingCitekeys.add(citekey);
 
         const memberFolders = folderMembership.get(doc.id) ?? [];
@@ -76,14 +88,16 @@ export async function syncLibrary(deps: SyncDependencies): Promise<SyncResult> {
         );
 
         const frontmatter = mapDocumentToFrontmatter(doc, citekey, folderNames);
-        const wasCreated = await writeNoteForDocument(
+        const wasCreated = await writeNoteForDocument({
           app,
           targetFolder,
           primaryFolderPath,
-          noteTemplate,
+          fileNameTemplate: deps.fileNameTemplate,
+          template: noteTemplate,
           frontmatter,
-          existingNotesByCitekey
-        );
+          known,
+          hasPdf: doc.file_attached === true,
+        });
         if (wasCreated) result.created++;
         else result.updated++;
 
@@ -106,26 +120,29 @@ export async function syncLibrary(deps: SyncDependencies): Promise<SyncResult> {
   return result;
 }
 
-async function ensureFolderExists(app: App, folder: string): Promise<void> {
-  const normalized = normalizePath(folder);
-  if (!normalized || app.vault.getAbstractFileByPath(normalized)) return;
-  const parentPath = normalized.split("/").slice(0, -1).join("/");
-  if (parentPath) await ensureFolderExists(app, parentPath);
-  if (!app.vault.getAbstractFileByPath(normalized)) {
-    await app.vault.createFolder(normalized).catch(() => undefined);
-  }
-}
-
-/** Walks targetFolder (and all its subfolders) looking for already-synced notes, indexed by citekey. */
-function collectExistingNotes(app: App, folder: string): Map<string, TFile> {
-  const normalized = normalizePath(folder);
-  const notes = new Map<string, TFile>();
+/**
+ * Finds already-synced notes anywhere in the vault. If several notes share a
+ * mendeley_id (e.g. duplicates from older versions) the oldest one wins, so
+ * sync keeps updating the original and never the later copies.
+ */
+function collectExistingNotes(app: App): ExistingNotes {
+  const byMendeleyId = new Map<string, ExistingNote>();
+  const citekeys = new Set<string>();
   for (const file of app.vault.getMarkdownFiles()) {
-    if (!file.path.startsWith(normalized)) continue;
-    const citekey = app.metadataCache.getFileCache(file)?.frontmatter?.citekey;
-    if (typeof citekey === "string") notes.set(citekey, file);
+    const frontmatter = app.metadataCache.getFileCache(file)?.frontmatter as
+      | Record<string, unknown>
+      | undefined;
+    const citekey = frontmatter?.citekey;
+    const mendeleyId = frontmatter?.mendeley_id;
+    if (typeof citekey !== "string") continue;
+    citekeys.add(citekey);
+    if (typeof mendeleyId !== "string") continue;
+    const current = byMendeleyId.get(mendeleyId);
+    if (!current || file.stat.ctime < current.file.stat.ctime) {
+      byMendeleyId.set(mendeleyId, { file, citekey });
+    }
   }
-  return notes;
+  return { byMendeleyId, citekeys };
 }
 
 async function fetchAllFolders(client: MendeleyClient): Promise<MendeleyFolder[]> {
@@ -160,45 +177,61 @@ async function buildFolderMembership(
   return membership;
 }
 
-async function writeNoteForDocument(
-  app: App,
-  targetFolder: string,
-  primaryFolderPath: string | null,
-  template: string,
-  frontmatter: NoteFrontmatter,
-  existingNotesByCitekey: Map<string, TFile>
-): Promise<boolean> {
-  const folderPath = normalizePath(
-    primaryFolderPath ? `${targetFolder}/${primaryFolderPath}` : targetFolder
-  );
-  const desiredPath = normalizePath(
-    `${folderPath}/${sanitizePathSegment(frontmatter.citekey)}.md`
-  );
+interface WriteNoteParams {
+  app: App;
+  targetFolder: string;
+  primaryFolderPath: string | null;
+  fileNameTemplate: string;
+  template: string;
+  frontmatter: NoteFrontmatter;
+  known: ExistingNote | undefined;
+  hasPdf: boolean;
+}
 
-  const existingFile = existingNotesByCitekey.get(frontmatter.citekey);
+async function writeNoteForDocument(params: WriteNoteParams): Promise<boolean> {
+  const { app, template, frontmatter, known, hasPdf } = params;
 
-  if (existingFile instanceof TFile) {
-    if (existingFile.path !== desiredPath) {
-      await ensureFolderExists(app, folderPath);
-      // renameFile (instead of vault.rename) also updates internal links
-      // elsewhere in the vault that point to this note.
-      await app.fileManager.renameFile(existingFile, desiredPath);
-    }
-    const raw = await app.vault.read(existingFile);
+  if (known) {
+    const raw = await app.vault.read(known.file);
     const { frontmatter: existingFm, body } = parseNoteContent(raw);
     const mergedFm = mergeFrontmatter(existingFm, frontmatter);
-    const newBody = buildNoteBody(body, template, frontmatter);
+    const newBody = withPdfButton(buildNoteBody(body, template, frontmatter), hasPdf);
     const newContent = serializeNoteContent(mergedFm, newBody);
     if (newContent !== raw) {
-      await app.vault.modify(existingFile, newContent);
+      await app.vault.modify(known.file, newContent);
     }
     return false;
   }
 
+  const folderPath = normalizePath(
+    params.primaryFolderPath
+      ? `${params.targetFolder}/${params.primaryFolderPath}`
+      : params.targetFolder
+  );
   await ensureFolderExists(app, folderPath);
+  const path = uniqueNotePath(
+    app,
+    folderPath,
+    buildNoteFileName(params.fileNameTemplate, frontmatter)
+  );
+
   const mergedFm = mergeFrontmatter({}, frontmatter);
-  const newBody = buildNoteBody("", template, frontmatter);
-  const newContent = serializeNoteContent(mergedFm, newBody);
-  await app.vault.create(desiredPath, newContent);
+  const newBody = withPdfButton(buildNoteBody("", template, frontmatter), hasPdf);
+  await app.vault.create(path, serializeNoteContent(mergedFm, newBody));
   return true;
+}
+
+/** Never overwrites an unrelated file that happens to have the same name. */
+function uniqueNotePath(app: App, folderPath: string, baseName: string): string {
+  let path = normalizePath(`${folderPath}/${baseName}.md`);
+  for (let n = 2; app.vault.getAbstractFileByPath(path); n++) {
+    path = normalizePath(`${folderPath}/${baseName} (${n}).md`);
+  }
+  return path;
+}
+
+/** Adds the "Download PDF" button block to notes whose reference has a PDF, only if the note has no PDF block yet. */
+function withPdfButton(body: string, hasPdf: boolean): string {
+  if (!hasPdf || hasPdfBlock(body)) return body;
+  return upsertPdfBlock(body, buildPdfBlockBody({ kind: "button" }));
 }

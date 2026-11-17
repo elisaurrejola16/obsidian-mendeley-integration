@@ -4,20 +4,24 @@ A desktop-only Obsidian plugin that syncs your [Mendeley](https://www.mendeley.c
 
 *(Una versión de este README en español está en [README.es.md](README.es.md).)*
 
-**Current status: Phase 1 (MVP).**
+**Current status: Phase 1 (MVP) plus on-demand PDFs.**
 
 - ✅ OAuth2 authentication with Mendeley (Authorization Code flow) with automatic token refresh.
 - ✅ **"Sync Mendeley library"** command: creates/updates one note per reference.
-- ✅ **"Mendeley: full resync (ignore incremental progress)"** command: forces a full resync, ignoring the incremental cursor. Useful the first time you change the note template, the target folder, or after updating the plugin to a version that changes how notes are organized (e.g. when the per-folder subfolders were introduced) — otherwise, documents that haven't changed in Mendeley since the last sync won't be reprocessed and will keep their old organization.
+- ✅ **"Mendeley: full resync (ignore incremental progress)"** command: forces a full resync, ignoring the incremental cursor. Useful after you change the note template, or to refresh notes that haven't changed in Mendeley since the last sync (those are skipped by the normal incremental sync). It updates existing notes in place and never creates copies.
 - ✅ Frontmatter with `citekey`, title, authors, year, journal, DOI, URL, abstract, tags, Mendeley folders, `mendeley_id`, and last-modified date.
-- ✅ Citekey generation (uses Mendeley's `citation_key` if present; otherwise `authorYear+firstTitleWord`, with automatic disambiguation).
+- ✅ Citekey generation (uses Mendeley's `citation_key` if present; otherwise `authorYear+firstTitleWord`, with automatic disambiguation). A reference keeps its citekey once it has a note.
 - ✅ Incremental sync (`modified_since`) and pagination.
-- ✅ Notes are organized into subfolders inside the target folder, mirroring Mendeley's folder hierarchy (including nested subfolders). If a document belongs to several Mendeley folders at once, the note is placed under the alphabetically first one (the full folder list is still kept in `mendeley_folders`); if it's in no folder, it stays at the root.
+- ✅ **Rename and move your notes freely.** Notes are matched to Mendeley by the `mendeley_id` in their frontmatter, never by file name or location, and sync never renames or moves an existing note.
+- ✅ **Choose how new notes are named** (setting "File name for new notes": `{{citekey}}`, `{{title}}`, `{{year}}`, `{{author}}`). New notes are created in subfolders mirroring Mendeley's folder hierarchy (including nested ones). If a document belongs to several Mendeley folders, the note goes under the alphabetically first one (the full list is kept in `mendeley_folders`); if it's in none, it goes at the root.
 - ✅ Generated content lives inside a delimited block (`<!-- mendeley:start -->...<!-- mendeley:end -->`); anything you write outside that block (e.g. under `## My notes`) is never touched or deleted.
-- 🔜 Phase 2: "Insert citation" command (`[@citekey]`, Pandoc format), importing PDF annotations/highlights.
-- 🔜 Phase 3: CSL JSON export, opening the attached PDF/DOI from the note, filtering by folder when syncing.
+- ✅ **PDFs on demand.** Notes whose reference has a PDF in Mendeley get a **"Download PDF from Mendeley"** button (or use the **"Download PDF of the current reference"** command). The PDF is saved in your vault (setting "PDF folder", default `Attachments/Mendeley`) and embedded in the note. Nothing is downloaded during sync, so your vault doesn't fill up with PDFs you don't need.
+- ✅ **Highlighting.** The **"Open PDF of the current reference (to highlight it)"** command opens the PDF in its own tab. For persistent highlights, use a PDF annotation plugin such as [PDF++](https://community.obsidian.md/plugins/pdf-plus).
+- ✅ **"Remove duplicate reference notes"** command: if an older version of this plugin left copies of your notes (e.g. `citekey.md` and `citekeya.md`), it moves the extra copies to the trash after asking for confirmation. Copies that contain text you wrote are never touched.
+- 🔜 Phase 2: "Insert citation" command (`[@citekey]`, Pandoc format), importing the highlights you made in Mendeley.
+- 🔜 Phase 3: CSL JSON export, opening the DOI from the note, filtering by folder when syncing.
 
-**Known Phase 1 limitation:** if you delete a document in Mendeley, the corresponding local note is **not deleted automatically** (by design: the plugin never deletes your content). You'll need to clean it up by hand if you want to.
+**Known limitation:** if you delete a document in Mendeley, the corresponding local note is **not deleted automatically** (by design: the plugin never deletes your content). You'll need to clean it up by hand if you want to.
 
 ---
 
@@ -92,6 +96,8 @@ On every later sync, only the content inside `<!-- mendeley:start -->...<!-- men
 - The **Client Secret** and the access/refresh tokens are stored in `data.json`, inside the plugin's folder in your vault (`.obsidian/plugins/mendeley-integration/data.json`). **They are not encrypted.** Obsidian doesn't give community plugins access to the OS keychain, so this limitation is shared with most integration plugins (Google Calendar, GitHub Sync, etc.).
 - If you share or sync your vault (e.g. with Git or another service), make sure to exclude `.obsidian/plugins/mendeley-integration/data.json` or avoid sharing that folder.
 - The **"Disconnect"** button in the settings deletes the locally stored tokens (it doesn't revoke access on Mendeley's side; for that, check the authorized apps in your Mendeley account).
+
+- Besides `api.mendeley.com`, the plugin contacts Mendeley's file storage (a short-lived signed URL) only when you download a PDF. Your Mendeley token is never sent to that storage.
 
 ## 7. Development
 

@@ -1,4 +1,4 @@
-import { Plugin, Notice, ObsidianProtocolData } from "obsidian";
+import { Plugin, Notice, ObsidianProtocolData, TFile } from "obsidian";
 import { DEFAULT_SETTINGS, MendeleySettings } from "./settings/types";
 import { SettingsTab } from "./settings/SettingsTab";
 import { TokenStore, StoredTokens } from "./auth/TokenStore";
@@ -6,6 +6,10 @@ import { OAuthManager, MendeleyAuthError } from "./auth/OAuthManager";
 import { MendeleyClient } from "./api/MendeleyClient";
 import { runSyncCommand } from "./commands/syncLibraryCommand";
 import { DEFAULT_SYNC_STATE, SyncStateData } from "./sync/SyncState";
+import { downloadPdfForNote, findEmbeddedPdf, getNoteIds } from "./pdf/PdfService";
+import { registerPdfButton } from "./ui/PdfButton";
+import { runCleanupDuplicates } from "./commands/cleanupDuplicatesCommand";
+import { getErrorMessage } from "./utils/errors";
 
 const REDIRECT_ACTION = "mendeley-auth-callback";
 
@@ -89,6 +93,69 @@ export default class MendeleyPlugin extends Plugin {
       name: "Mendeley: full resync (ignore incremental progress)",
       callback: () => runSyncCommand(syncDeps, { forceFullSync: true }),
     });
+
+    this.addCommand({
+      id: "remove-duplicate-notes",
+      name: "Remove duplicate reference notes",
+      callback: () => void runCleanupDuplicates(this.app),
+    });
+
+    registerPdfButton(this, (note) => this.downloadPdf(note));
+
+    this.addCommand({
+      id: "download-pdf",
+      name: "Download PDF of the current reference",
+      checkCallback: (checking) => {
+        const note = this.app.workspace.getActiveFile();
+        if (!note || !getNoteIds(this.app, note)) return false;
+        if (!checking) void this.downloadPdf(note);
+        return true;
+      },
+    });
+
+    this.addCommand({
+      id: "open-pdf",
+      name: "Open PDF of the current reference (to highlight it)",
+      checkCallback: (checking) => {
+        const note = this.app.workspace.getActiveFile();
+        if (!note || !getNoteIds(this.app, note)) return false;
+        if (!checking) void this.openPdf(note);
+        return true;
+      },
+    });
+  }
+
+  async downloadPdf(note: TFile): Promise<void> {
+    if (!this.authManager.isConnected()) {
+      new Notice("Connect your Mendeley account from the plugin settings first.");
+      return;
+    }
+    const notice = new Notice("Downloading PDF from Mendeley...", 0);
+    try {
+      const { downloaded } = await downloadPdfForNote(
+        { app: this.app, client: this.client, pdfFolder: this.data.settings.pdfFolder },
+        note
+      );
+      notice.hide();
+      new Notice(
+        downloaded
+          ? "PDF downloaded and embedded in the note."
+          : "This note already has its PDF embedded."
+      );
+    } catch (err) {
+      notice.hide();
+      new Notice(`Could not download the PDF: ${getErrorMessage(err)}`, 8000);
+      console.error(err);
+    }
+  }
+
+  async openPdf(note: TFile): Promise<void> {
+    const pdf = findEmbeddedPdf(this.app, note);
+    if (!pdf) {
+      new Notice("This note has no PDF yet. Download it first.");
+      return;
+    }
+    await this.app.workspace.getLeaf("tab").openFile(pdf);
   }
 
   onunload(): void {}

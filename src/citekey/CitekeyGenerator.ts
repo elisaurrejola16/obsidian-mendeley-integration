@@ -80,3 +80,16 @@ function disambiguate(
   while (existingCitekeys.has(`${base}-${n}`)) n++;
   return `${base}-${n}`;
 }
+
+/**
+ * A reference that already has a note keeps that note's citekey. Running the
+ * generator again would see its own citekey as "taken" and invent "...a",
+ * which is how duplicate notes used to appear on every resync.
+ */
+export function resolveCitekey(
+  doc: MendeleyDocument,
+  knownCitekey: string | undefined,
+  existingCitekeys: ReadonlySet<string>
+): string {
+  return knownCitekey ?? generateCitekey(doc, existingCitekeys);
+}

@@ -16,7 +16,7 @@ export interface NoteFrontmatter {
 }
 
 /** Keys the plugin owns on every sync; any other key the user adds to the frontmatter is preserved. */
-const MANAGED_KEYS: (keyof NoteFrontmatter)[] = [
+export const MANAGED_KEYS: (keyof NoteFrontmatter)[] = [
   "citekey",
   "title",
   "authors",

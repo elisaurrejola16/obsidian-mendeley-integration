@@ -2,20 +2,24 @@
 
 Plugin de Obsidian (solo escritorio) que sincroniza tu biblioteca de [Mendeley](https://www.mendeley.com/) con notas de lectura en tu vault, usando la [API oficial de Mendeley](https://dev.mendeley.com/) (OAuth2 + REST).
 
-**Estado actual: Fase 1 (MVP).**
+**Estado actual: Fase 1 (MVP) más PDFs bajo demanda.**
 
 - ✅ Autenticación OAuth2 con Mendeley (Authorization Code flow) y renovación automática de tokens.
-- ✅ Comando **"Sincronizar biblioteca de Mendeley"**: crea/actualiza una nota por referencia.
-- ✅ Comando **"Mendeley: resincronizar toda la biblioteca (ignora el avance incremental)"**: fuerza un resync completo ignorando el cursor incremental. Útil la primera vez que cambias la plantilla, la carpeta destino, o después de actualizar el plugin a una versión que cambia cómo se organizan las notas (por ejemplo, al activar las subcarpetas por carpeta de Mendeley) — de lo contrario, los documentos que no se han modificado en Mendeley desde el último sync no se vuelven a procesar y se quedan con la organización vieja.
+- ✅ Comando **"Sync Mendeley library"**: crea/actualiza una nota por referencia.
+- ✅ Comando **"Mendeley: full resync (ignore incremental progress)"**: fuerza un resync completo ignorando el cursor incremental. Útil después de cambiar la plantilla de nota, o para refrescar notas cuyos documentos no han cambiado en Mendeley desde el último sync (el sync normal las salta). Actualiza las notas existentes en su sitio y nunca crea copias.
 - ✅ Frontmatter con `citekey`, título, autores, año, revista, DOI, URL, resumen, tags, carpetas de Mendeley, `mendeley_id` y fecha de modificación.
-- ✅ Generación de citekey (usa `citation_key` de Mendeley si existe; si no, `autorAño+primeraPalabraDelTítulo`, con desambiguación automática).
+- ✅ Generación de citekey (usa `citation_key` de Mendeley si existe; si no, `autorAño+primeraPalabraDelTítulo`, con desambiguación automática). Una referencia conserva su citekey una vez que tiene nota.
 - ✅ Sincronización incremental (`modified_since`) y paginación.
-- ✅ Las notas se organizan en subcarpetas dentro de la carpeta destino, reflejando la jerarquía de carpetas de Mendeley (incluye sub-subcarpetas). Si un documento está en varias carpetas de Mendeley a la vez, la nota se ubica en la primera alfabéticamente (la lista completa de carpetas igual queda en `mendeley_folders`); si no está en ninguna, queda en la raíz.
-- ✅ El contenido generado vive dentro de un bloque delimitado (`<!-- mendeley:start -->...<!-- mendeley:end -->`); todo lo que escribas fuera de ese bloque (por ejemplo, bajo `## Mis notas`) nunca se toca ni se borra.
-- 🔜 Fase 2: comando "Insertar cita" (`[@citekey]`, formato Pandoc), importación de anotaciones/highlights de PDFs.
-- 🔜 Fase 3: export a CSL JSON, abrir PDF/DOI desde la nota, filtro por carpeta al sincronizar.
+- ✅ **Puedes renombrar y mover tus notas libremente.** Las notas se asocian a Mendeley por el `mendeley_id` de su frontmatter, nunca por nombre de archivo ni ubicación, y el sync no renombra ni mueve notas existentes.
+- ✅ **Eliges cómo se llaman las notas nuevas** (ajuste "File name for new notes": `{{citekey}}`, `{{title}}`, `{{year}}`, `{{author}}`). Las notas nuevas se crean en subcarpetas que reflejan la jerarquía de carpetas de Mendeley (incluye anidadas). Si un documento está en varias carpetas, la nota va en la primera alfabéticamente (la lista completa queda en `mendeley_folders`); si no está en ninguna, queda en la raíz.
+- ✅ El contenido generado vive dentro de un bloque delimitado (`<!-- mendeley:start -->...<!-- mendeley:end -->`); todo lo que escribas fuera de ese bloque (por ejemplo, bajo `## My notes`) nunca se toca ni se borra.
+- ✅ **PDFs bajo demanda.** Las notas cuya referencia tiene PDF en Mendeley muestran un botón **"Download PDF from Mendeley"** (o usa el comando **"Download PDF of the current reference"**). El PDF se guarda en tu vault (ajuste "PDF folder", por defecto `Attachments/Mendeley`) y queda incrustado en la nota. Nada se descarga durante el sync, así tu vault no se llena de PDFs que no necesitas.
+- ✅ **Destacar.** El comando **"Open PDF of the current reference (to highlight it)"** abre el PDF en su propia pestaña. Para destacados persistentes, usa un plugin de anotación de PDFs como [PDF++](https://community.obsidian.md/plugins/pdf-plus).
+- ✅ Comando **"Remove duplicate reference notes"**: si una versión antigua del plugin dejó copias de tus notas (por ejemplo `citekey.md` y `citekeya.md`), mueve las copias sobrantes a la papelera tras pedir confirmación. Las copias que contienen texto tuyo nunca se tocan.
+- 🔜 Fase 2: comando "Insertar cita" (`[@citekey]`, formato Pandoc), importación de los destacados que hiciste en Mendeley.
+- 🔜 Fase 3: export a CSL JSON, abrir el DOI desde la nota, filtro por carpeta al sincronizar.
 
-**Limitación conocida de la Fase 1:** si borras un documento en Mendeley, la nota local correspondiente **no se elimina automáticamente** (por diseño: el plugin nunca borra contenido tuyo). Tendrás que limpiarla a mano si quieres.
+**Limitación conocida:** si borras un documento en Mendeley, la nota local correspondiente **no se elimina automáticamente** (por diseño: el plugin nunca borra contenido tuyo). Tendrás que limpiarla a mano si quieres.
 
 ---
 
@@ -90,6 +94,8 @@ En cada sincronización posterior, solo se actualiza el contenido dentro de `<!-
 - El **Client Secret** y los tokens de acceso/refresco se guardan en `data.json`, dentro de la carpeta del plugin en tu vault (`.obsidian/plugins/mendeley-integration/data.json`). **No están cifrados.** Obsidian no da acceso al keychain del sistema operativo a plugins de comunidad, así que esta limitación es compartida con la mayoría de plugins de integración (Google Calendar, GitHub Sync, etc.).
 - Si compartes o sincronizas tu vault (por ejemplo, con Git u otro servicio), asegúrate de excluir `.obsidian/plugins/mendeley-integration/data.json` o de no compartir esa carpeta.
 - El botón **"Desconectar"** en los ajustes borra los tokens guardados localmente (no revoca el acceso del lado de Mendeley; para eso, revisa las apps autorizadas en tu cuenta de Mendeley).
+
+- Además de `api.mendeley.com`, el plugin contacta el almacenamiento de archivos de Mendeley (una URL firmada de corta duración) solo cuando descargas un PDF. Tu token de Mendeley nunca se envía a ese almacenamiento.
 
 ## 7. Desarrollo
 

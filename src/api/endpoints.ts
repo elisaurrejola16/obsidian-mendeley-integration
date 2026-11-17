@@ -1,5 +1,5 @@
 import type { MendeleyClient } from "./MendeleyClient";
-import type { MendeleyDocument, MendeleyFolder } from "./types";
+import type { MendeleyDocument, MendeleyFile, MendeleyFolder } from "./types";
 
 const PAGE_SIZE = 200;
 
@@ -49,4 +49,15 @@ export function listFolderDocumentIds(
     `/folders/${folderId}/documents`,
     { limit: PAGE_SIZE }
   );
+}
+
+/** Files attached to one document (usually just a PDF), so a single page is enough. */
+export async function listFilesForDocument(
+  client: MendeleyClient,
+  documentId: string
+): Promise<MendeleyFile[]> {
+  const response = await client.request<MendeleyFile[]>("/files", {
+    document_id: documentId,
+  });
+  return response.data;
 }
